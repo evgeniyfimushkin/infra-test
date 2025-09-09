@@ -5,7 +5,7 @@
 #
 
 
-
+echo "Terraform is creating VMs"
 cd ~/git/infra-test/terraform
 terraform apply -auto-approve -input=false -no-color
 terraform output -json > terraform_output.json
@@ -23,6 +23,7 @@ for ip in $PUB1 $PUB2; do
 done
 
 
+echo "KubeSpray is pouring k8s cluster on VMs"
 PUB1=$(jq -r '.external_ip_address_vm_1.value' terraform_output.json)
 PUB2=$(jq -r '.external_ip_address_vm_2.value' terraform_output.json)
 PRIV1=$(jq -r '.internal_ip_address_vm_1.value' terraform_output.json)
@@ -55,7 +56,7 @@ ssh  -o StrictHostKeyChecking=no $PUB1 sudo cat /etc/kubernetes/admin.conf | sed
 
 # ISTIO
 #
-#
+#echo "Istio is installing into the cluster"
 #istioctl install -y
 #kubectl label namespace default istio-injection=enabled
 
@@ -72,12 +73,14 @@ cd ~/git/microservices-demo/release
 
 # Deploy prometheus stack in the cluster
 #
-#
+#echo "Deploying Prometheus stack"
 #helm install prometheus prometheus-community/kube-prometheus-stack
 
 
 #Deploy ArgoCD
 
+
+echo "Deploying ArgoCD in the cluster"
 kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-kubectl apply -f ~/git/infra-test/application/application.yaml
+kubectl apply -f ~/git/infra-test/argocd/root-app.yaml
