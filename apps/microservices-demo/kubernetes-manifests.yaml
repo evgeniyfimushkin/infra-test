@@ -28,6 +28,7 @@ spec:
   selector:
     matchLabels:
       app: emailservice
+  replicas: 3
   template:
     metadata:
       labels:
