@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: microservices-demo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/evgeniyfimushkin/infra-test.git
+    targetRevision: HEAD
+    path: apps/microservices-demo
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: microservices-demo
+  syncPolicy:
+    syncOptions:
+    - CreateNamespace=true
+    automated:
+      selfHeal: true
+      prune: true
