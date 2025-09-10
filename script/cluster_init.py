@@ -27,7 +27,8 @@ ARGOCD_DIR: Path = BASE_DIR / "argocd"
 class Colors:
     RUNNING = "\033[1;37m\033[44m" 
     COMMAND = "\033[36m"
-    PATH = GREEN   = "\033[32m"
+    GREEN = "\033[32m"
+    PATH = GREEN
     FAILED = "\033[91m" 
     END = "\033[0m" 
 
@@ -78,41 +79,53 @@ def terraform_apply() -> tuple[list[str], list[str]]:
 
     output = json.loads(output)
 
+    logging.info(f"{Colors.GREEN}{COUNT_OF_NODES} vm's created successfully {Colors.END}")
+
     return output["external_ip_addresses"]["value"], output["internal_ip_addresses"]["value"]
 
-def wait_for_ssh(ip: str, timeout: int = 300) -> None:
-    """Ждём доступности SSH на указанном IP"""
-    logging.info(f"Waiting for SSH on {ip}")
-    start: float = time.time()
-    while time.time() - start < timeout:
-        try:
-            run_command(["ssh", "-o", "StrictHostKeyChecking=no", ip, "echo ok"], check=True)
-            logging.info(f"{ip} is ready")
-            return
-        except Exception:
-            time.sleep(5)
-    raise TimeoutError(f"SSH not ready for {ip} after {timeout} seconds")
+def wait_for_ssh(ip_addresses: list[str], timeout: int = 300) -> None:
+    """Waiting for SSH availability for VMs"""
+    for ip in ip_addresses:
+        logging.info(f"Waiting for SSH on {ip}")
+        start = time.time()
+        while True:
+            try:
+                run_command(f"ssh -o StrictHostKeyChecking=no {ip} echo ok", check=True)
+                logging.info(f"{ip} is ready")
+                break 
+            except Exception:
+                if time.time() - start > timeout:
+                    raise TimeoutError(f"SSH not ready for {ip} after {timeout} seconds")
+                time.sleep(5)
 
-def generate_inventory(pub1: str, pub2: str, priv1: str, priv2: str) -> None:
-    """Генерация inventory для Kubespray"""
+def generate_inventory(external_ip_list: list[str], internal_ip_list: list[str]) -> None:
+    """Generation inventory for Kubespray"""
+
+    run_command(f"rm -rf {KUBESPRAY_DIR / 'inventory/cluster'}")
+    run_command(f"cp -r {KUBESPRAY_DIR / 'inventory/sample'} {KUBESPRAY_DIR / 'inventory/cluster'}")
+
     inventory_path: Path = KUBESPRAY_DIR / "inventory/cluster/inventory.ini"
-    inventory_path.parent.mkdir(parents=True, exist_ok=True)
-    content: str = f"""
-node1 ansible_host={pub1} ip={priv1} etcd_member_name=etcd1
-node2 ansible_host={pub2} ip={priv2} etcd_member_name=etcd2
+    lines = []
+    for i in range(len(external_ip_list)):
+        lines.append(f"node{i+1} ansible_host={external_ip_list[i]} ip={internal_ip_list[i]} etcd_member_name=etcd{i}")
+        
+    lines.append("\n[kube_control_plane]")
+    lines.append("node1")
 
-[kube_control_plane]
-node1
+    lines.append("\n[etcd:children]")
+    lines.append("kube_control_plane")
 
-[etcd:children]
-kube_control_plane
+    lines.append("\n[kube_node]")
+    for i in range(len(external_ip_list)):
+        lines.append(f"node{i+1}")
 
-[kube_node]
-node1
-node2
-"""
-    inventory_path.write_text(content)
-    logging.info(f"Inventory written to {inventory_path}")
+    with open(inventory_path, "w") as f:
+        f.write("\n".join(lines))
+
+    with open(KUBESPRAY_DIR / "inventory/cluster/group_vars/k8s_cluster/k8s-cluster.yml", "a") as f:
+        f.write(f"\nsupplementary_addresses_in_ssl_keys: [{external_ip_list[0]}]\n")
+
+    print(f"Inventory written to {inventory_path}")
 
 def configure_kubeconfig(pub1: str) -> None:
     """Копируем kubeconfig с master ноды и заменяем localhost на публичный IP"""
@@ -134,29 +147,27 @@ def deploy_argocd() -> None:
     run_command(["kubectl", "apply", "-f", str(ARGOCD_DIR / "root-app.yaml")])
 
 def main() -> None:
+
     external_ip_list, internal_ip_list = terraform_apply()
 
-    exit()
-   # 2. Wait SSH
-    wait_for_ssh(PUB1)
-    wait_for_ssh(PUB2)
+    wait_for_ssh(external_ip_list)
 
-    # 3. Kubespray clone
     if not KUBESPRAY_DIR.exists():
         run_command(["git", "clone", "https://github.com/kubernetes-sigs/kubespray.git", str(KUBESPRAY_DIR)])
     
-    generate_inventory(PUB1, PUB2, PRIV1, PRIV2)
+    generate_inventory(external_ip_list, internal_ip_list)
 
-    # 4. Run Ansible
-    run_command([
-        "ansible-playbook", 
-        "-i", str(KUBESPRAY_DIR / "inventory/cluster/inventory.ini"),
-        "cluster.yml",
-        "-b", "-v"
-    ], check=True)
 
-    # 5. Configure kubeconfig
+    run_command(f"ansible-playbook -i {str(KUBESPRAY_DIR / 'inventory/cluster/inventory.ini')} {str(KUBESPRAY_DIR / 'cluster.yml')} -b -v",
+            check=True,
+            cwd=KUBESPRAY_DIR
+        )
+
+    exit()
+
     configure_kubeconfig(PUB1)
+
+    exit()
 
     # 6. Deploy ArgoCD
     deploy_argocd()
