@@ -11,24 +11,23 @@ provider "yandex" {
   zone = "ru-central1-d"
 }
 
-resource "yandex_compute_disk" "boot-disk-1" {
-  name     = "boot-disk-1"
+variable "vm_count" {
+  type    = number
+  default = 2
+}
+
+resource "yandex_compute_disk" "boot-disk" {
+  count    = var.vm_count
+  name     = "boot-disk-${count.index + 1}"
   type     = "network-hdd"
   zone     = "ru-central1-d"
   size     = "20"
   image_id = "fd8e4gcflhhc7odvbuss"
 }
 
-resource "yandex_compute_disk" "boot-disk-2" {
-  name     = "boot-disk-2"
-  type     = "network-hdd"
-  zone     = "ru-central1-d"
-  size     = "20"
-  image_id = "fd8e4gcflhhc7odvbuss"
-}
-
-resource "yandex_compute_instance" "vm-1" {
-  name        = "terraform1"
+resource "yandex_compute_instance" "vm" {
+  count       = var.vm_count
+  name        = "terraform${count.index + 1}"
   platform_id = "standard-v2"
   allow_stopping_for_update = true
 
@@ -38,7 +37,7 @@ resource "yandex_compute_instance" "vm-1" {
   }
 
   boot_disk {
-    disk_id = yandex_compute_disk.boot-disk-1.id
+    disk_id = yandex_compute_disk.boot-disk[count.index].id
   }
 
   network_interface {
@@ -48,33 +47,7 @@ resource "yandex_compute_instance" "vm-1" {
 
   metadata = {
     ssh-keys  = "ubuntu:${file("~/.skotty/pubs/ssh_yubikey_legacy.pub")}"
-    user-data = "${file("./user-data.txt")}"
-  }
-}
-
-
-resource "yandex_compute_instance" "vm-2" {
-  name        = "terraform2"
-  platform_id = "standard-v2"
-  allow_stopping_for_update = true
-
-  resources {
-    cores  = 4
-    memory = 4
-  }
-
-  boot_disk {
-    disk_id = yandex_compute_disk.boot-disk-2.id
-  }
-
-  network_interface {
-    subnet_id = yandex_vpc_subnet.subnet-1.id
-    nat       = true
-  }
-
-  metadata = {
-    ssh-keys  = "ubuntu:${file("~/.skotty/pubs/ssh_yubikey_legacy.pub")}"
-    user-data = "${file("./user-data.txt")}"
+    user-data = file("./user-data.txt")
   }
 }
 
@@ -89,18 +62,11 @@ resource "yandex_vpc_subnet" "subnet-1" {
   v4_cidr_blocks = ["192.168.10.0/24"]
 }
 
-output "internal_ip_address_vm_1" {
-  value = yandex_compute_instance.vm-1.network_interface.0.ip_address
+output "internal_ip_addresses" {
+  value = [for vm in yandex_compute_instance.vm : vm.network_interface[0].ip_address]
 }
 
-output "internal_ip_address_vm_2" {
-  value = yandex_compute_instance.vm-2.network_interface.0.ip_address
+output "external_ip_addresses" {
+  value = [for vm in yandex_compute_instance.vm : vm.network_interface[0].nat_ip_address]
 }
 
-output "external_ip_address_vm_1" {
-  value = yandex_compute_instance.vm-1.network_interface.0.nat_ip_address
-}
-
-output "external_ip_address_vm_2" {
-  value = yandex_compute_instance.vm-2.network_interface.0.nat_ip_address
-}
