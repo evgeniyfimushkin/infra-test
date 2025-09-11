@@ -1,0 +1,31 @@
+#cloud-config
+datasource:
+ Ec2:
+  strict_id: false
+ssh_pwauth: no
+users:
+- name: evgeniyfim
+  sudo: ALL=(ALL) NOPASSWD:ALL
+  shell: /bin/bash
+  ssh_authorized_keys:
+  - ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGaUbYmB8Jn2gfaEHQDqZej9Yn/3Rpfif1oDjJGvxyF+rnFJ9RXM5ofQTjVPgucd5KvoFoJMhsjww+OmMyA5QMw=
+write_files:
+  - path: "/usr/local/etc/startup.sh"
+    permissions: "755"
+    content: |
+      #!/bin/bash
+
+      apt-get update
+      apt-get install -y git ansible neofetch
+
+      echo $USER > ~/user.txt
+      whoami > ~/user.txt
+      mkdir /home/evgeniyfim/git
+      cd /home/evgeniyfim/git
+      git clone https://github.com/evgeniyfimushkin/infra-test.git
+      echo $USER > user.txt
+      whoami >> user.txt
+      
+    defer: true
+runcmd:
+  - ["/usr/local/etc/startup.sh"]

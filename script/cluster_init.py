@@ -20,7 +20,7 @@ logging.basicConfig(
 
 COUNT_OF_NODES = args.replicas
 BASE_DIR: Path = Path.home() / "git/infra-test"
-TERRAFORM_DIR: Path = BASE_DIR / "terraform"
+TERRAFORM_DIR: Path = BASE_DIR / "terraform/cluster"
 KUBESPRAY_DIR: Path = Path.home() / "git/kubespray"
 ARGOCD_DIR: Path = BASE_DIR / "argocd"
 
@@ -95,7 +95,7 @@ def wait_for_ssh(ip_addresses: list[str], timeout: int = 300) -> None:
                 break 
             except Exception:
                 if time.time() - start > timeout:
-                    raise TimeoutError(f"SSH not ready for {ip} after {timeout} seconds")
+                    raise TimeoutError(f"{Colors.FAILED}SSH not ready for {ip} after {timeout} seconds{Colors.END}")
                 time.sleep(5)
 
 def generate_inventory(external_ip_list: list[str], internal_ip_list: list[str]) -> None:
@@ -125,26 +125,38 @@ def generate_inventory(external_ip_list: list[str], internal_ip_list: list[str])
     with open(KUBESPRAY_DIR / "inventory/cluster/group_vars/k8s_cluster/k8s-cluster.yml", "a") as f:
         f.write(f"\nsupplementary_addresses_in_ssl_keys: [{external_ip_list[0]}]\n")
 
-    print(f"Inventory written to {inventory_path}")
+    print(f"{Colors.GREEN}Inventory written to {inventory_path}{Colors.END}")
 
 def configure_kubeconfig(pub1: str) -> None:
-    """Копируем kubeconfig с master ноды и заменяем localhost на публичный IP"""
-    kubeconfig: str = run_command([
-        "ssh", "-o", "StrictHostKeyChecking=no", pub1, "sudo cat /etc/kubernetes/admin.conf"
-    ])
-    kubeconfig = kubeconfig.replace("127.0.0.1", pub1)
-    kubeconfig_path: Path = Path.home() / ".kube/config"
-    kubeconfig_path.write_text(kubeconfig)
-    logging.info(f"Kubeconfig written to {kubeconfig_path}")
+    """Copying kubeconfig from master node and switch localhost on external IP"""
+    kubeconfig_path = Path.home() / ".kube/config"
+    kubeconfig_path.parent.mkdir(parents=True, exist_ok=True)
+    ssh_proc = subprocess.Popen(
+        ["ssh", "-o", "StrictHostKeyChecking=no", pub1, "sudo cat /etc/kubernetes/admin.conf"],
+        stdout=subprocess.PIPE,
+        text=True
+    )
+
+    with open(kubeconfig_path, "w", newline="\n") as f:
+        for line in ssh_proc.stdout:
+            line = line.replace("127.0.0.1", pub1)
+            f.write(line)
+
+
+
+    logging.info(f"{Colors.GREEN}Kubeconfig written to {kubeconfig_path}{Colors.END}")
+
 
 def deploy_argocd() -> None:
-    """Развёртываем ArgoCD в кластер"""
-    run_command(["kubectl", "create", "namespace", "argocd"], check=False)
-    run_command([
-        "kubectl", "apply", "-n", "argocd",
-        "-f", "https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
-    ])
-    run_command(["kubectl", "apply", "-f", str(ARGOCD_DIR / "root-app.yaml")])
+    """Deploying ArgoCD"""
+    if "argocd" not in run_command("kubectl get ns"):
+        run_command("kubectl create namespace argocd")
+    run_command("kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml")
+    run_command(
+        f"kubectl apply -f {str(ARGOCD_DIR / 'root-app.yaml')}",
+        cwd = ARGOCD_DIR
+    )
+
 
 def main() -> None:
 
@@ -153,23 +165,26 @@ def main() -> None:
     wait_for_ssh(external_ip_list)
 
     if not KUBESPRAY_DIR.exists():
-        run_command(["git", "clone", "https://github.com/kubernetes-sigs/kubespray.git", str(KUBESPRAY_DIR)])
+        run_command(f"git clone https://github.com/kubernetes-sigs/kubespray.git {str(KUBESPRAY_DIR)}")
     
     generate_inventory(external_ip_list, internal_ip_list)
 
 
-    run_command(f"ansible-playbook -i {str(KUBESPRAY_DIR / 'inventory/cluster/inventory.ini')} {str(KUBESPRAY_DIR / 'cluster.yml')} -b -v",
+    run_command(
+            f"""
+            ansible-playbook 
+            -i {str(KUBESPRAY_DIR / 'inventory/cluster/inventory.ini')} 
+            {str(KUBESPRAY_DIR / 'cluster.yml')} 
+            -b 
+            -v
+            """,
             check=True,
             cwd=KUBESPRAY_DIR
-        )
+    )
 
-    exit()
 
-    configure_kubeconfig(PUB1)
+    configure_kubeconfig(external_ip_list[0])
 
-    exit()
-
-    # 6. Deploy ArgoCD
     deploy_argocd()
 
 if __name__ == "__main__":
