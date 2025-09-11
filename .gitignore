@@ -2,6 +2,7 @@
 .terraform/
 terraform_output.json
 *.tfstate
+*.tfstate*
 *.tfvars
 crash.log
 override.tf

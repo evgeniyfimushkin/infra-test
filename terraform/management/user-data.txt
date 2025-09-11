@@ -16,13 +16,16 @@ write_files:
       #!/bin/bash
 
       apt-get update
-      apt-get install -y git ansible neofetch
+      apt-get install -y git ansible
 
-      echo $USER > ~/user.txt
-      whoami > ~/user.txt
       mkdir /home/evgeniyfim/git
       cd /home/evgeniyfim/git
       git clone https://github.com/evgeniyfimushkin/infra-test.git
+      
+      cp /home/evgeniyfim/git/infra-test/terraform/management/terraform /usr/local/bin/
+      chmod +x /usr/local/bin/terraform
+      
+
       echo $USER > user.txt
       whoami >> user.txt
       
