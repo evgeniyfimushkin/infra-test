@@ -25,9 +25,30 @@ write_files:
       cp /home/evgeniyfim/git/infra-test/terraform/management/terraform /usr/local/bin/
       chmod +x /usr/local/bin/terraform
       
+      curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
 
-      echo $USER > user.txt
-      whoami >> user.txt
+     
+      echo 'export YC_TOKEN=$(yc iam create-token)' >> /home/evgeniyfim/.bashrc
+      echo 'export YC_CLOUD_ID=$(yc config get cloud-id)' >> /home/evgeniyfim/.bashrc
+      echo 'export YC_FOLDER_ID=$(yc config get folder-id)' >> /home/evgeniyfim/.bashrc
+
+      cat > /home/evgeniyfim/.terraformrc <<EOF
+provider_installation {
+  network_mirror {
+    url = "https://terraform-mirror.yandexcloud.net/"
+    include = ["registry.terraform.io/*/*"]
+  }
+  direct {
+    exclude = ["registry.terraform.io/*/*"]
+  }
+}
+EOF
+
+
+ 
+
+    rm /home/evgeniyfim/git/infra-test/terraform/cluster/.terraform.lock.hcl
+    chown -R 1000:1000 /home/evgeniyfim/git
       
     defer: true
 runcmd:
