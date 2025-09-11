@@ -33,22 +33,22 @@ write_files:
       echo 'export YC_FOLDER_ID=$(yc config get folder-id)' >> /home/evgeniyfim/.bashrc
 
       cat > /home/evgeniyfim/.terraformrc <<EOF
-provider_installation {
-  network_mirror {
-    url = "https://terraform-mirror.yandexcloud.net/"
-    include = ["registry.terraform.io/*/*"]
-  }
-  direct {
-    exclude = ["registry.terraform.io/*/*"]
-  }
-}
-EOF
+      provider_installation {
+        network_mirror {
+          url = "https://terraform-mirror.yandexcloud.net/"
+          include = ["registry.terraform.io/*/*"]
+        }
+        direct {
+          exclude = ["registry.terraform.io/*/*"]
+        }
+      }
+      EOF
 
 
  
 
-    rm /home/evgeniyfim/git/infra-test/terraform/cluster/.terraform.lock.hcl
-    chown -R 1000:1000 /home/evgeniyfim/git
+      rm /home/evgeniyfim/git/infra-test/terraform/cluster/.terraform.lock.hcl
+      chown -R 1000:1000 /home/evgeniyfim/git
       
     defer: true
 runcmd:
